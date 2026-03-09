@@ -1007,4 +1007,244 @@ app.get('/api/dashboard/manager', auth, async (req, res) => {
   }
 });
 
+// ========== DATABASE INITIALIZATION ==========
+app.post('/api/init-db', async (req, res) => {
+  try {
+    // Create tables manually to ensure they exist
+    const createTablesSQL = `
+      -- Create tables if they don't exist
+      CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          role VARCHAR(20) NOT NULL CHECK (role IN ('manager', 'employee')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS skills (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          description TEXT,
+          category VARCHAR(50),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS user_skills (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+          proficiency_level VARCHAR(20) DEFAULT 'beginner' CHECK (proficiency_level IN ('beginner', 'intermediate', 'advanced', 'expert')),
+          acquired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, skill_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS projects (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(200) NOT NULL,
+          description TEXT,
+          status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('pending', 'active', 'completed', 'cancelled')),
+          created_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS project_skills (
+          id SERIAL PRIMARY KEY,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+          required_count INTEGER DEFAULT 1,
+          UNIQUE(project_id, skill_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS project_assignments (
+          id SERIAL PRIMARY KEY,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          assigned_by INTEGER REFERENCES users(id),
+          assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(project_id, employee_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_tasks (
+          id SERIAL PRIMARY KEY,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+          status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
+          assigned_by INTEGER REFERENCES users(id),
+          assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          completed_at TIMESTAMP,
+          UNIQUE(project_id, employee_id, skill_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS notifications (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT,
+          reference_id INTEGER,
+          reference_type VARCHAR(50),
+          read BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_gaps (
+          id SERIAL PRIMARY KEY,
+          employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+          status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          resolved_at TIMESTAMP,
+          UNIQUE(employee_id, project_id, skill_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS trainings (
+          id SERIAL PRIMARY KEY,
+          skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+          name VARCHAR(200) NOT NULL,
+          description TEXT,
+          duration_hours INTEGER DEFAULT 10,
+          content_url TEXT,
+          difficulty_level VARCHAR(20) DEFAULT 'beginner' CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS training_progress (
+          id SERIAL PRIMARY KEY,
+          employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          training_id INTEGER REFERENCES trainings(id) ON DELETE CASCADE,
+          project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+          status VARCHAR(20) DEFAULT 'assigned' CHECK (status IN ('assigned', 'in_progress', 'completed')),
+          progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+          assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          started_at TIMESTAMP,
+          completed_at TIMESTAMP,
+          UNIQUE(employee_id, training_id, project_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+      CREATE INDEX IF NOT EXISTS idx_user_skills_user ON user_skills(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_skills_skill ON user_skills(skill_id);
+      CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+      CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
+      CREATE INDEX IF NOT EXISTS idx_project_skills_project ON project_skills(project_id);
+      CREATE INDEX IF NOT EXISTS idx_project_assignments_employee ON project_assignments(employee_id);
+      CREATE INDEX IF NOT EXISTS idx_project_assignments_project ON project_assignments(project_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_tasks_employee ON skill_tasks(employee_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_tasks_status ON skill_tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+      CREATE INDEX IF NOT EXISTS idx_skill_gaps_employee ON skill_gaps(employee_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_gaps_project ON skill_gaps(project_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_gaps_status ON skill_gaps(status);
+      CREATE INDEX IF NOT EXISTS idx_trainings_skill ON trainings(skill_id);
+      CREATE INDEX IF NOT EXISTS idx_training_progress_employee ON training_progress(employee_id);
+      CREATE INDEX IF NOT EXISTS idx_training_progress_status ON training_progress(status);
+    `;
+    
+    await pool.query(createTablesSQL);
+    res.json({ message: 'Database initialized successfully' });
+  } catch (error) {
+    console.error('Database init error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/seed-db', async (req, res) => {
+  try {
+    // Seed data
+    const seedSQL = `
+      -- Insert sample users (password: 'password123' for all)
+      INSERT INTO users (name, email, password_hash, role) VALUES
+      ('Rahul Manager', 'manager@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'manager'),
+      ('Amit Kumar', 'amit@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
+      ('Neha Sharma', 'neha@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
+      ('Arjun Patel', 'arjun@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee')
+      ON CONFLICT (email) DO NOTHING;
+
+      -- Insert skills
+      INSERT INTO skills (name, description, category) VALUES
+      ('JavaScript', 'Programming language for web development', 'Frontend'),
+      ('React', 'JavaScript library for building user interfaces', 'Frontend'),
+      ('Node.js', 'JavaScript runtime for server-side development', 'Backend'),
+      ('Python', 'General-purpose programming language', 'Backend'),
+      ('SQL', 'Structured Query Language for databases', 'Database'),
+      ('Flutter', 'UI toolkit for building natively compiled applications', 'Mobile'),
+      ('Firebase', 'Google''s mobile platform', 'Mobile'),
+      ('Kotlin', 'Modern programming language for Android development', 'Mobile'),
+      ('Docker', 'Platform for developing, shipping, and running applications', 'DevOps'),
+      ('AWS', 'Amazon Web Services cloud computing platform', 'Cloud'),
+      ('Git', 'Distributed version control system', 'DevOps'),
+      ('TypeScript', 'Typed superset of JavaScript', 'Frontend')
+      ON CONFLICT (name) DO NOTHING;
+
+      -- Assign skills to employees
+      INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'JavaScript'), 'intermediate'),
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'React'), 'beginner'),
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'Node.js'), 'beginner'),
+      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'Python'), 'intermediate'),
+      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'SQL'), 'advanced'),
+      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Flutter'), 'beginner'),
+      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Firebase'), 'beginner')
+      ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = EXCLUDED.proficiency_level;
+
+      -- Create sample projects
+      INSERT INTO projects (name, description, status, created_by) VALUES
+      ('Mobile Banking App', 'A secure mobile banking application', 'active', (SELECT id FROM users WHERE email = 'manager@company.com')),
+      ('E-commerce Platform', 'Full-stack e-commerce solution', 'pending', (SELECT id FROM users WHERE email = 'manager@company.com')),
+      ('AI Dashboard', 'Analytics dashboard with ML insights', 'active', (SELECT id FROM users WHERE email = 'manager@company.com'))
+      ON CONFLICT DO NOTHING;
+
+      -- Add required skills to projects
+      INSERT INTO project_skills (project_id, skill_id) VALUES
+      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Flutter')),
+      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Firebase')),
+      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin')),
+      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'React')),
+      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'Node.js')),
+      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL')),
+      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python')),
+      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'SQL')),
+      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'))
+      ON CONFLICT DO NOTHING;
+
+      -- Assign employees to projects
+      INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES
+      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
+      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
+      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
+      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com'))
+      ON CONFLICT DO NOTHING;
+
+      -- Create skill gaps
+      INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL'), 'pending'),
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python'), 'pending'),
+      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'), 'pending'),
+      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin'), 'pending')
+      ON CONFLICT DO NOTHING;
+
+      -- Create sample notifications
+      INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type, read) VALUES
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), 'project_assignment', 'New Project', 'Assigned to E-commerce Platform', 2, 'project', false),
+      ((SELECT id FROM users WHERE email = 'amit@company.com'), 'skill_gap', 'Skill Gap', 'Learn SQL for E-commerce', 5, 'skill', false),
+      ((SELECT id FROM users WHERE email = 'neha@company.com'), 'project_assignment', 'New Project', 'Assigned to AI Dashboard', 3, 'project', false),
+      ((SELECT id FROM users WHERE email = 'arjun@company.com'), 'project_assignment', 'New Project', 'Assigned to Mobile Banking', 1, 'project', false)
+      ON CONFLICT DO NOTHING;
+    `;
+    
+    await pool.query(seedSQL);
+    res.json({ message: 'Database seeded successfully' });
+  } catch (error) {
+    console.error('Database seed error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = app;
