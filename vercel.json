@@ -4,16 +4,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server/src/server.js"
+      "destination": "/api/index.js"
     },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "server/src/server.js": {
-      "includeFiles": "server/**"
-    }
-  }
+  ]
 }
