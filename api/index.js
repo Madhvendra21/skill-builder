@@ -288,7 +288,9 @@ app.get('/api/projects', auth, async (req, res) => {
           json_agg(
             json_build_object('id', s.id, 'name', s.name, 'description', s.description)
           ) FILTER (WHERE s.id IS NOT NULL), '[]'
-        ) as required_skills
+        ) as required_skills,
+        COALESCE((SELECT COUNT(*) FROM project_skills WHERE project_id = p.id), 0) as skill_count,
+        COALESCE((SELECT COUNT(*) FROM project_assignments WHERE project_id = p.id), 0) as assigned_count
       FROM projects p
       LEFT JOIN project_skills ps ON p.id = ps.project_id
       LEFT JOIN skills s ON ps.skill_id = s.id
@@ -492,7 +494,7 @@ app.get('/api/tasks/my', auth, async (req, res) => {
       WHERE st.employee_id = $1 AND st.status != 'completed'
       ORDER BY st.created_at DESC
     `, [req.user.id]);
-    res.json({ tasks: result.rows });
+    res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -519,7 +521,7 @@ app.get('/api/tasks/stats', auth, async (req, res) => {
            WHERE project_id IN (SELECT id FROM projects WHERE created_by = $1)) as total_assignments
       `, [req.user.id]);
     }
-    res.json({ stats: result.rows[0] });
+    res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

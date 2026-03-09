@@ -201,13 +201,13 @@ const ManagerDashboard = () => {
                   <h4 style={styles.employeeName}>{employee.name}</h4>
                   <p style={styles.employeeEmail}>{employee.email}</p>
                   <div style={styles.skillTags}>
-                    {employee.skills?.slice(0, 3).map(skill => (
-                      <span key={skill.id} style={styles.skillTag}>{skill.name}</span>
+                    {employee.skills?.filter(s => s.skill_id).slice(0, 3).map(skill => (
+                      <span key={skill.skill_id} style={styles.skillTag}>{skill.skill_name}</span>
                     ))}
-                    {employee.skills?.length > 3 && (
-                      <span style={styles.skillTag}>+{employee.skills.length - 3}</span>
+                    {employee.skills?.filter(s => s.skill_id).length > 3 && (
+                      <span style={styles.skillTag}>+{employee.skills.filter(s => s.skill_id).length - 3}</span>
                     )}
-                    {(!employee.skills || employee.skills.length === 0) && (
+                    {(!employee.skills || employee.skills.filter(s => s.skill_id).length === 0) && (
                       <span style={{ ...styles.skillTag, backgroundColor: '#fee', color: '#666' }}>No skills</span>
                     )}
                   </div>

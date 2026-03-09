@@ -23,9 +23,14 @@ const EmployeeDashboard = () => {
         projectsAPI.getAll(),
         tasksAPI.getStats()
       ]);
-      setTasks(tasksRes.data || []);
-      setProjects(projectsRes.data || []);
-      setStats(statsRes.data || { total_tasks: 0, pending_tasks: 0, completed_tasks: 0, project_count: 0 });
+      // Handle different response formats
+      const tasksData = Array.isArray(tasksRes.data) ? tasksRes.data : tasksRes.data?.tasks || [];
+      const projectsData = Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data?.projects || [];
+      const statsData = statsRes.data?.stats || statsRes.data || { total_tasks: 0, pending_tasks: 0, completed_tasks: 0, project_count: 0 };
+      
+      setTasks(tasksData);
+      setProjects(projectsData);
+      setStats(statsData);
       setError('');
     } catch (error) {
       console.error('Failed to fetch data:', error);
