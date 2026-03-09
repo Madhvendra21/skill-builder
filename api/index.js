@@ -1157,17 +1157,18 @@ app.post('/api/init-db', async (req, res) => {
 
 app.post('/api/seed-db', async (req, res) => {
   try {
-    // Seed data
-    const seedSQL = `
-      -- Insert sample users (password: 'password123' for all)
+    // Step 1: Insert users
+    await pool.query(`
       INSERT INTO users (name, email, password_hash, role) VALUES
       ('Rahul Manager', 'manager@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'manager'),
       ('Amit Kumar', 'amit@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
       ('Neha Sharma', 'neha@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
       ('Arjun Patel', 'arjun@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee')
-      ON CONFLICT (email) DO NOTHING;
-
-      -- Insert skills
+      ON CONFLICT (email) DO NOTHING
+    `);
+    
+    // Step 2: Insert skills
+    await pool.query(`
       INSERT INTO skills (name, description, category) VALUES
       ('JavaScript', 'Programming language for web development', 'Frontend'),
       ('React', 'JavaScript library for building user interfaces', 'Frontend'),
@@ -1175,71 +1176,144 @@ app.post('/api/seed-db', async (req, res) => {
       ('Python', 'General-purpose programming language', 'Backend'),
       ('SQL', 'Structured Query Language for databases', 'Database'),
       ('Flutter', 'UI toolkit for building natively compiled applications', 'Mobile'),
-      ('Firebase', 'Google''s mobile platform', 'Mobile'),
-      ('Kotlin', 'Modern programming language for Android development', 'Mobile'),
-      ('Docker', 'Platform for developing, shipping, and running applications', 'DevOps'),
-      ('AWS', 'Amazon Web Services cloud computing platform', 'Cloud'),
-      ('Git', 'Distributed version control system', 'DevOps'),
-      ('TypeScript', 'Typed superset of JavaScript', 'Frontend')
-      ON CONFLICT (name) DO NOTHING;
-
-      -- Assign skills to employees
-      INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'JavaScript'), 'intermediate'),
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'React'), 'beginner'),
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'Node.js'), 'beginner'),
-      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'Python'), 'intermediate'),
-      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'SQL'), 'advanced'),
-      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Flutter'), 'beginner'),
-      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Firebase'), 'beginner')
-      ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = EXCLUDED.proficiency_level;
-
-      -- Create sample projects
-      INSERT INTO projects (name, description, status, created_by) VALUES
-      ('Mobile Banking App', 'A secure mobile banking application', 'active', (SELECT id FROM users WHERE email = 'manager@company.com')),
-      ('E-commerce Platform', 'Full-stack e-commerce solution', 'pending', (SELECT id FROM users WHERE email = 'manager@company.com')),
-      ('AI Dashboard', 'Analytics dashboard with ML insights', 'active', (SELECT id FROM users WHERE email = 'manager@company.com'))
-      ON CONFLICT DO NOTHING;
-
-      -- Add required skills to projects
-      INSERT INTO project_skills (project_id, skill_id) VALUES
-      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Flutter')),
-      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Firebase')),
-      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin')),
-      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'React')),
-      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'Node.js')),
-      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL')),
-      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python')),
-      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'SQL')),
-      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'))
-      ON CONFLICT DO NOTHING;
-
-      -- Assign employees to projects
-      INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES
-      ((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
-      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
-      ((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
-      ((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com'))
-      ON CONFLICT DO NOTHING;
-
-      -- Create skill gaps
-      INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL'), 'pending'),
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python'), 'pending'),
-      ((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'), 'pending'),
-      ((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin'), 'pending')
-      ON CONFLICT DO NOTHING;
-
-      -- Create sample notifications
-      INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type, read) VALUES
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), 'project_assignment', 'New Project', 'Assigned to E-commerce Platform', 2, 'project', false),
-      ((SELECT id FROM users WHERE email = 'amit@company.com'), 'skill_gap', 'Skill Gap', 'Learn SQL for E-commerce', 5, 'skill', false),
-      ((SELECT id FROM users WHERE email = 'neha@company.com'), 'project_assignment', 'New Project', 'Assigned to AI Dashboard', 3, 'project', false),
-      ((SELECT id FROM users WHERE email = 'arjun@company.com'), 'project_assignment', 'New Project', 'Assigned to Mobile Banking', 1, 'project', false)
-      ON CONFLICT DO NOTHING;
-    `;
+      ('Firebase', 'Google mobile platform', 'Mobile'),
+      ('Kotlin', 'Modern programming language for Android development', 'Mobile')
+      ON CONFLICT (name) DO NOTHING
+    `);
     
-    await pool.query(seedSQL);
+    // Step 3: Get IDs
+    const managerResult = await pool.query("SELECT id FROM users WHERE email = 'manager@company.com'");
+    const amitResult = await pool.query("SELECT id FROM users WHERE email = 'amit@company.com'");
+    const nehaResult = await pool.query("SELECT id FROM users WHERE email = 'neha@company.com'");
+    const arjunResult = await pool.query("SELECT id FROM users WHERE email = 'arjun@company.com'");
+    
+    const managerId = managerResult.rows[0]?.id;
+    const amitId = amitResult.rows[0]?.id;
+    const nehaId = nehaResult.rows[0]?.id;
+    const arjunId = arjunResult.rows[0]?.id;
+    
+    const skillsResult = await pool.query("SELECT id, name FROM skills");
+    const skills = {};
+    skillsResult.rows.forEach(s => skills[s.name] = s.id);
+    
+    // Step 4: Assign skills to employees
+    if (amitId && skills['JavaScript']) {
+      await pool.query(
+        "INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, 'intermediate') ON CONFLICT DO NOTHING",
+        [amitId, skills['JavaScript']]
+      );
+    }
+    if (amitId && skills['React']) {
+      await pool.query(
+        "INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, 'beginner') ON CONFLICT DO NOTHING",
+        [amitId, skills['React']]
+      );
+    }
+    if (nehaId && skills['Python']) {
+      await pool.query(
+        "INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, 'intermediate') ON CONFLICT DO NOTHING",
+        [nehaId, skills['Python']]
+      );
+    }
+    if (nehaId && skills['SQL']) {
+      await pool.query(
+        "INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, 'advanced') ON CONFLICT DO NOTHING",
+        [nehaId, skills['SQL']]
+      );
+    }
+    if (arjunId && skills['Flutter']) {
+      await pool.query(
+        "INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, 'beginner') ON CONFLICT DO NOTHING",
+        [arjunId, skills['Flutter']]
+      );
+    }
+    
+    // Step 5: Create projects
+    await pool.query(`
+      INSERT INTO projects (name, description, status, created_by) VALUES
+      ('Mobile Banking App', 'A secure mobile banking application', 'active', $1),
+      ('E-commerce Platform', 'Full-stack e-commerce solution', 'pending', $1),
+      ('AI Dashboard', 'Analytics dashboard with ML insights', 'active', $1)
+      ON CONFLICT DO NOTHING
+    `, [managerId]);
+    
+    const projects = {};
+    const allProjects = await pool.query("SELECT id, name FROM projects WHERE created_by = $1", [managerId]);
+    allProjects.rows.forEach(p => projects[p.name] = p.id);
+    
+    // Step 6: Add required skills to projects
+    const projectSkillsData = [
+      [projects['Mobile Banking App'], skills['Flutter']],
+      [projects['Mobile Banking App'], skills['Firebase']],
+      [projects['Mobile Banking App'], skills['Kotlin']],
+      [projects['E-commerce Platform'], skills['React']],
+      [projects['E-commerce Platform'], skills['Node.js']],
+      [projects['E-commerce Platform'], skills['SQL']],
+      [projects['AI Dashboard'], skills['Python']],
+      [projects['AI Dashboard'], skills['SQL']],
+      [projects['AI Dashboard'], skills['React']]
+    ];
+    
+    for (const [pid, sid] of projectSkillsData) {
+      if (pid && sid) {
+        await pool.query(
+          "INSERT INTO project_skills (project_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [pid, sid]
+        );
+      }
+    }
+    
+    // Step 7: Assign employees to projects
+    const assignments = [
+      [projects['E-commerce Platform'], amitId],
+      [projects['AI Dashboard'], amitId],
+      [projects['AI Dashboard'], nehaId],
+      [projects['Mobile Banking App'], arjunId]
+    ];
+    
+    for (const [pid, eid] of assignments) {
+      if (pid && eid && managerId) {
+        await pool.query(
+          "INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+          [pid, eid, managerId]
+        );
+      }
+    }
+    
+    // Step 8: Create skill gaps
+    const skillGaps = [
+      [amitId, projects['E-commerce Platform'], skills['SQL']],
+      [amitId, projects['AI Dashboard'], skills['Python']],
+      [nehaId, projects['AI Dashboard'], skills['React']],
+      [arjunId, projects['Mobile Banking App'], skills['Kotlin']]
+    ];
+    
+    for (const [eid, pid, sid] of skillGaps) {
+      if (eid && pid && sid) {
+        await pool.query(
+          "INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES ($1, $2, $3, 'pending') ON CONFLICT DO NOTHING",
+          [eid, pid, sid]
+        );
+      }
+    }
+    
+    // Step 9: Create sample notifications
+    const notifications = [
+      [amitId, 'project_assignment', 'New Project', 'Assigned to E-commerce Platform'],
+      [amitId, 'skill_gap', 'Skill Gap', 'Learn SQL for E-commerce'],
+      [nehaId, 'project_assignment', 'New Project', 'Assigned to AI Dashboard'],
+      [arjunId, 'project_assignment', 'New Project', 'Assigned to Mobile Banking']
+    ];
+    
+    for (const [uid, type, title, message] of notifications) {
+      if (uid) {
+        await pool.query(
+          "INSERT INTO notifications (user_id, type, title, message, read) VALUES ($1, $2, $3, $4, false) ON CONFLICT DO NOTHING",
+          [uid, type, title, message]
+        );
+      }
+    }
+    
     res.json({ message: 'Database seeded successfully' });
   } catch (error) {
     console.error('Database seed error:', error);
