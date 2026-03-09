@@ -50,7 +50,12 @@ export const usersAPI = {
   getUserById: (id) => api.get(`/users/${id}`),
   addUserSkill: (id, data) => api.post(`/users/${id}/skills`, data),
   removeUserSkill: (id, skillId) => api.delete(`/users/${id}/skills/${skillId}`),
-  getEmployeesBySkill: (skillId) => api.get(`/users/skill/${skillId}`)
+  getEmployeesBySkill: (skillId) => api.get(`/users/skill/${skillId}`),
+  uploadResume: (formData) => api.post('/users/upload-resume', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
 };
 
 // Skills API

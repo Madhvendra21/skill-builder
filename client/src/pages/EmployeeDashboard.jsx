@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { tasksAPI, projectsAPI } from '../services/api';
+import { tasksAPI, projectsAPI, usersAPI } from '../services/api';
 
 const EmployeeDashboard = () => {
   const { user, logout } = useAuth();
@@ -14,6 +14,8 @@ const EmployeeDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showResumeUpload, setShowResumeUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
 
   const fetchData = useCallback(async () => {
@@ -23,7 +25,6 @@ const EmployeeDashboard = () => {
         projectsAPI.getAll(),
         tasksAPI.getStats()
       ]);
-      // Handle different response formats
       const tasksData = Array.isArray(tasksRes.data) ? tasksRes.data : tasksRes.data?.tasks || [];
       const projectsData = Array.isArray(projectsRes.data) ? projectsRes.data : projectsRes.data?.projects || [];
       const statsData = statsRes.data?.stats || statsRes.data || { total_tasks: 0, pending_tasks: 0, completed_tasks: 0, project_count: 0 };
@@ -43,7 +44,6 @@ const EmployeeDashboard = () => {
   useEffect(() => {
     fetchData();
     refreshNotifications();
-    // Auto-refresh every 5 seconds for real-time updates
     const interval = setInterval(() => {
       fetchData();
       refreshNotifications();
@@ -61,12 +61,33 @@ const EmployeeDashboard = () => {
     navigate('/login');
   };
 
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    try {
+      const response = await usersAPI.uploadResume(formData);
+      showToast(`Resume uploaded! Found ${response.data.total_found} skills.`);
+      fetchData();
+      setShowResumeUpload(false);
+    } catch (error) {
+      console.error('Upload error:', error);
+      showToast(error.response?.data?.error || 'Failed to upload resume', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleCompleteTask = async (taskId) => {
     try {
       await tasksAPI.complete(taskId);
       fetchData();
       refreshNotifications();
-      showToast('Task completed successfully! Notification cleared.');
+      showToast('Task completed successfully!');
     } catch (error) {
       console.error('Failed to complete task:', error);
       showToast(error.response?.data?.error || 'Failed to complete task', 'error');
@@ -97,7 +118,6 @@ const EmployeeDashboard = () => {
 
   return (
     <div style={styles.container}>
-      {/* Toast Notification */}
       {toast && (
         <div style={{ ...styles.toast, backgroundColor: toast.type === 'error' ? '#ef4444' : '#22c55e' }}>
           {toast.message}
@@ -185,9 +205,6 @@ const EmployeeDashboard = () => {
                       ✓ Mark as Completed
                     </button>
                   )}
-                  {task.status === 'completed' && task.completed_at && (
-                    <p style={styles.completedDate}>✓ Completed: {new Date(task.completed_at).toLocaleDateString()}</p>
-                  )}
                 </div>
               ))
             )}
@@ -195,7 +212,12 @@ const EmployeeDashboard = () => {
         </div>
 
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>My Projects {projects.length > 0 && `(${projects.length})`}</h2>
+          <div style={styles.sectionHeader}>
+            <h2 style={styles.sectionTitle}>My Projects {projects.length > 0 && `(${projects.length})`}</h2>
+            <button onClick={() => setShowResumeUpload(true)} style={styles.uploadBtn}>
+              📄 Upload Resume
+            </button>
+          </div>
           <div style={styles.projectGrid}>
             {projects.length === 0 ? (
               <p style={styles.emptyMessage}>No projects assigned yet. Your manager will assign you to projects based on your skills.</p>
@@ -211,6 +233,36 @@ const EmployeeDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Resume Upload Modal */}
+      {showResumeUpload && (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <h3 style={styles.modalTitle}>Upload Your Resume</h3>
+            <p style={styles.modalText}>
+              We'll automatically extract your skills from your resume and add them to your profile.
+              Supported formats: PDF, DOC, DOCX, TXT
+            </p>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.txt"
+              onChange={handleResumeUpload}
+              disabled={uploading}
+              style={styles.fileInput}
+            />
+            <div style={styles.buttonGroup}>
+              <button 
+                onClick={() => setShowResumeUpload(false)} 
+                style={styles.cancelBtn}
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+            </div>
+            {uploading && <p style={styles.uploadingText}>Analyzing resume...</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -375,11 +427,25 @@ const styles = {
     marginBottom: '24px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
   },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px'
+  },
   sectionTitle: {
     fontSize: '18px',
     fontWeight: '600',
-    marginBottom: '16px',
     margin: 0
+  },
+  uploadBtn: {
+    backgroundColor: '#10b981',
+    color: 'white',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px'
   },
   taskList: {
     display: 'flex',
@@ -424,11 +490,6 @@ const styles = {
     cursor: 'pointer',
     fontSize: '14px'
   },
-  completedDate: {
-    fontSize: '12px',
-    color: '#22c55e',
-    margin: 0
-  },
   projectGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
@@ -455,6 +516,66 @@ const styles = {
     textAlign: 'center',
     color: '#666',
     padding: '20px'
+  },
+  modal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: '24px',
+    borderRadius: '8px',
+    width: '100%',
+    maxWidth: '400px',
+    maxHeight: '80vh',
+    overflowY: 'auto'
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    marginBottom: '16px',
+    margin: 0
+  },
+  modalText: {
+    fontSize: '14px',
+    color: '#666',
+    marginBottom: '16px',
+    lineHeight: '1.5'
+  },
+  fileInput: {
+    width: '100%',
+    padding: '12px',
+    border: '2px dashed #e5e7eb',
+    borderRadius: '8px',
+    marginBottom: '16px',
+    cursor: 'pointer'
+  },
+  buttonGroup: {
+    display: 'flex',
+    gap: '8px'
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: '#e5e7eb',
+    border: 'none',
+    padding: '10px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px'
+  },
+  uploadingText: {
+    textAlign: 'center',
+    color: '#1a73e8',
+    marginTop: '12px',
+    fontSize: '14px'
   }
 };
 

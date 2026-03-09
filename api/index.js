@@ -3,8 +3,26 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
+
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.pdf', '.doc', '.docx', '.txt'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed'));
+    }
+  }
+});
 
 // Database connection
 const pool = new Pool({
@@ -34,6 +52,46 @@ const auth = async (req, res, next) => {
   } catch (error) {
     res.status(401).json({ error: 'Invalid token' });
   }
+};
+
+// Helper: Extract skills from resume text
+const extractSkillsFromResume = (text, availableSkills) => {
+  const extractedSkills = [];
+  const textLower = text.toLowerCase();
+  
+  for (const skill of availableSkills) {
+    const skillName = skill.name.toLowerCase();
+    const skillVariations = [
+      skillName,
+      skillName.replace(/\s+/g, ''), // Remove spaces
+      skillName.replace(/\./g, ''),  // Remove dots
+      skillName.replace(/\+/g, 'p'), // Replace + with p
+    ];
+    
+    // Check if skill name or variations appear in the text
+    if (skillVariations.some(variation => textLower.includes(variation))) {
+      // Determine proficiency based on context
+      let proficiency = 'beginner';
+      const contextWindow = textLower.substring(
+        Math.max(0, textLower.indexOf(skillName) - 100),
+        Math.min(textLower.length, textLower.indexOf(skillName) + skillName.length + 100)
+      );
+      
+      if (contextWindow.includes('expert') || contextWindow.includes('advanced') || contextWindow.includes('years')) {
+        proficiency = 'advanced';
+      } else if (contextWindow.includes('intermediate') || contextWindow.includes('experience')) {
+        proficiency = 'intermediate';
+      }
+      
+      extractedSkills.push({
+        skill_id: skill.id,
+        skill_name: skill.name,
+        proficiency_level: proficiency
+      });
+    }
+  }
+  
+  return extractedSkills;
 };
 
 // Helper: Generate AI training recommendation
@@ -198,6 +256,48 @@ app.get('/api/users/skill/:skillId', auth, async (req, res) => {
     `, [req.params.skillId]);
     res.json(result.rows);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== RESUME UPLOAD & SKILL EXTRACTION ==========
+app.post('/api/users/upload-resume', auth, upload.single('resume'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No resume file uploaded' });
+    }
+    
+    // Convert buffer to text (simple text extraction)
+    const resumeText = req.file.buffer.toString('utf-8');
+    
+    // Get all available skills from database
+    const skillsResult = await pool.query('SELECT id, name FROM skills');
+    const availableSkills = skillsResult.rows;
+    
+    // Extract skills from resume
+    const extractedSkills = extractSkillsFromResume(resumeText, availableSkills);
+    
+    // Add extracted skills to user
+    const addedSkills = [];
+    for (const skill of extractedSkills) {
+      try {
+        await pool.query(
+          'INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, $3) ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = $3',
+          [req.user.id, skill.skill_id, skill.proficiency_level]
+        );
+        addedSkills.push(skill);
+      } catch (err) {
+        console.error('Error adding skill:', err);
+      }
+    }
+    
+    res.json({
+      message: 'Resume processed successfully',
+      extracted_skills: addedSkills,
+      total_found: extractedSkills.length
+    });
+  } catch (error) {
+    console.error('Resume upload error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -403,9 +503,8 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
     `, [req.params.id]);
     
     const project = await pool.query('SELECT name FROM projects WHERE id = $1', [req.params.id]);
-    const employee = await pool.query('SELECT name FROM users WHERE id = $1', [employee_id]);
     
-    // Check for missing skills and create skill gaps
+    // Check for missing skills and create skill gaps + tasks
     for (const skill of projectSkills.rows) {
       const hasSkill = await pool.query(
         'SELECT * FROM user_skills WHERE user_id = $1 AND skill_id = $2',
@@ -417,6 +516,12 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
         await pool.query(
           'INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
           [employee_id, req.params.id, skill.id, 'pending']
+        );
+        
+        // Create skill task for the employee
+        await pool.query(
+          'INSERT INTO skill_tasks (project_id, employee_id, skill_id, status, assigned_by) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (project_id, employee_id, skill_id) DO NOTHING',
+          [req.params.id, employee_id, skill.id, 'pending', req.user.id]
         );
         
         // Get trainings for this skill and assign first one
@@ -441,6 +546,14 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
         );
       }
     }
+    
+    // Create notification for project assignment
+    await pool.query(
+      'INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type) VALUES ($1, $2, $3, $4, $5, $6)',
+      [employee_id, 'project_assignment', 'New Project Assignment', 
+       `You have been assigned to project "${project.rows[0].name}"`,
+       req.params.id, 'project']
+    );
     
     res.json({ message: 'Employee assigned successfully' });
   } catch (error) {
