@@ -74,8 +74,9 @@ app.post('/api/auth/login', async (req, res) => {
     
     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
     
-    // For seeded users with placeholder passwords
-    const isValidPassword = user.password_hash.includes('YourHashedPassword') 
+    // For seeded users with placeholder passwords (they start with $2a$10$YourHashedPassword)
+    const isPlaceholderPassword = user.password_hash.startsWith('$2a$10$YourHashedPassword');
+    const isValidPassword = isPlaceholderPassword 
       ? password === 'password123' 
       : await bcrypt.compare(password, user.password_hash);
     
