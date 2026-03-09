@@ -1,119 +1,188 @@
--- Seed initial data for testing
+-- Seed data for Skill Training Platform
 
--- Insert Skills (15 skills)
-INSERT INTO skills (name, description, category) VALUES
-('JavaScript', 'Programming language for web development', 'Programming'),
-('Python', 'General purpose programming language', 'Programming'),
-('React', 'Frontend JavaScript library', 'Frontend'),
-('Node.js', 'Backend JavaScript runtime', 'Backend'),
-('SQL', 'Database query language', 'Database'),
-('AWS', 'Amazon Web Services cloud platform', 'Cloud'),
-('Docker', 'Containerization platform', 'DevOps'),
-('Git', 'Version control system', 'Tools'),
-('TypeScript', 'Typed JavaScript superset', 'Programming'),
-('MongoDB', 'NoSQL database', 'Database'),
-('Kubernetes', 'Container orchestration', 'DevOps'),
-('GraphQL', 'API query language', 'Backend'),
-('Vue.js', 'Frontend JavaScript framework', 'Frontend'),
-('Java', 'Object-oriented programming language', 'Programming'),
-('PostgreSQL', 'Relational database', 'Database');
-
--- Insert Users (2 managers, 5 employees)
--- Password for all users: 'password123'
--- Hash generated with bcrypt, cost factor 10
+-- Insert sample users (password: 'password123' for all)
+-- Manager
 INSERT INTO users (name, email, password_hash, role) VALUES
-('Rahul Manager', 'manager@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'manager'),
-('Priya Lead', 'lead@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'manager'),
-('Amit Kumar', 'amit@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'employee'),
-('Sneha Sharma', 'sneha@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'employee'),
-('Vikram Singh', 'vikram@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'employee'),
-('Priya Patel', 'priya.p@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'employee'),
-('Ravi Gupta', 'ravi@company.com', '$2a$10$8K1p/a8F7T3wP9TvRJzJJuQ5mYHXOV.qC7cFZGqXhDn2M8ZPVKvSO', 'employee');
+('Rahul Manager', 'manager@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'manager'),
+('Amit Kumar', 'amit@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
+('Neha Sharma', 'neha@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee'),
+('Arjun Patel', 'arjun@company.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'employee')
+ON CONFLICT (email) DO NOTHING;
 
--- Insert User Skills (each employee has some skills)
+-- Insert skills
+INSERT INTO skills (name, description, category) VALUES
+('JavaScript', 'Programming language for web development', 'Frontend'),
+('React', 'JavaScript library for building user interfaces', 'Frontend'),
+('Node.js', 'JavaScript runtime for server-side development', 'Backend'),
+('Python', 'General-purpose programming language', 'Backend'),
+('SQL', 'Structured Query Language for databases', 'Database'),
+('Flutter', 'UI toolkit for building natively compiled applications', 'Mobile'),
+('Firebase', 'Google''s mobile platform that helps you quickly develop apps', 'Mobile'),
+('Kotlin', 'Modern programming language for Android development', 'Mobile'),
+('Docker', 'Platform for developing, shipping, and running applications', 'DevOps'),
+('AWS', 'Amazon Web Services cloud computing platform', 'Cloud'),
+('Git', 'Distributed version control system', 'DevOps'),
+('TypeScript', 'Typed superset of JavaScript', 'Frontend')
+ON CONFLICT (name) DO NOTHING;
+
+-- Insert trainings for each skill
+INSERT INTO trainings (skill_id, name, description, duration_hours, difficulty_level) VALUES
+-- JavaScript trainings
+((SELECT id FROM skills WHERE name = 'JavaScript'), 'JavaScript Basics', 'Learn variables, functions, and control flow in JavaScript', 15, 'beginner'),
+((SELECT id FROM skills WHERE name = 'JavaScript'), 'ES6+ Features', 'Master modern JavaScript features like arrow functions, destructuring, and async/await', 20, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'JavaScript'), 'Advanced JavaScript Patterns', 'Learn design patterns and advanced concepts', 25, 'advanced'),
+
+-- React trainings
+((SELECT id FROM skills WHERE name = 'React'), 'React Fundamentals', 'Components, props, state, and lifecycle methods', 18, 'beginner'),
+((SELECT id FROM skills WHERE name = 'React'), 'React Hooks', 'Master useState, useEffect, and custom hooks', 15, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'React'), 'State Management', 'Redux, Context API, and state management patterns', 22, 'advanced'),
+
+-- Node.js trainings
+((SELECT id FROM skills WHERE name = 'Node.js'), 'Node.js Basics', 'Server-side JavaScript fundamentals', 16, 'beginner'),
+((SELECT id FROM skills WHERE name = 'Node.js'), 'Express.js', 'Building REST APIs with Express framework', 20, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'Node.js'), 'Authentication & Security', 'JWT, OAuth, and secure API development', 18, 'advanced'),
+
+-- Python trainings
+((SELECT id FROM skills WHERE name = 'Python'), 'Python Fundamentals', 'Variables, data types, and control structures', 15, 'beginner'),
+((SELECT id FROM skills WHERE name = 'Python'), 'OOP in Python', 'Object-oriented programming concepts', 18, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'Python'), 'Python for Data Science', 'NumPy, Pandas, and data analysis', 25, 'advanced'),
+
+-- SQL trainings
+((SELECT id FROM skills WHERE name = 'SQL'), 'SQL Basics', 'SELECT, INSERT, UPDATE, DELETE operations', 12, 'beginner'),
+((SELECT id FROM skills WHERE name = 'SQL'), 'Joins & Subqueries', 'Complex queries and data relationships', 16, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'SQL'), 'Database Optimization', 'Indexing, query optimization, and performance', 20, 'advanced'),
+
+-- Flutter trainings
+((SELECT id FROM skills WHERE name = 'Flutter'), 'Flutter Widgets', 'Building UI with Flutter widgets', 20, 'beginner'),
+((SELECT id FROM skills WHERE name = 'Flutter'), 'State Management', 'Provider, Bloc, and state management', 22, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'Flutter'), 'Firebase Integration', 'Connecting Flutter apps to Firebase', 18, 'advanced'),
+
+-- Firebase trainings
+((SELECT id FROM skills WHERE name = 'Firebase'), 'Firebase Basics', 'Getting started with Firebase', 14, 'beginner'),
+((SELECT id FROM skills WHERE name = 'Firebase'), 'Cloud Firestore', 'NoSQL database with Firestore', 18, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'Firebase'), 'Authentication', 'User authentication with Firebase Auth', 15, 'advanced'),
+
+-- Kotlin trainings
+((SELECT id FROM skills WHERE name = 'Kotlin'), 'Kotlin Fundamentals', 'Syntax, null safety, and basics', 16, 'beginner'),
+((SELECT id FROM skills WHERE name = 'Kotlin'), 'Android Development', 'Building Android apps with Kotlin', 24, 'intermediate'),
+((SELECT id FROM skills WHERE name = 'Kotlin'), 'Coroutines', 'Asynchronous programming in Kotlin', 20, 'advanced');
+
+-- Assign skills to employees
+-- Amit has JavaScript and React
 INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES
--- Amit (user 3) has JavaScript, React, Git
-(3, 1, 'intermediate'),
-(3, 3, 'intermediate'),
-(3, 8, 'advanced'),
--- Sneha (user 4) has Python, SQL, PostgreSQL
-(4, 2, 'advanced'),
-(4, 5, 'intermediate'),
-(4, 15, 'intermediate'),
--- Vikram (user 5) has Node.js, AWS, Docker
-(5, 4, 'intermediate'),
-(5, 6, 'beginner'),
-(5, 7, 'intermediate'),
--- Priya P (user 6) has React, TypeScript, MongoDB
-(6, 3, 'advanced'),
-(6, 9, 'intermediate'),
-(6, 10, 'beginner'),
--- Ravi (user 7) has Java, Kubernetes, SQL
-(7, 14, 'advanced'),
-(7, 11, 'beginner'),
-(7, 5, 'intermediate');
+((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'JavaScript'), 'intermediate'),
+((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'React'), 'beginner'),
+((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM skills WHERE name = 'Node.js'), 'beginner')
+ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = EXCLUDED.proficiency_level;
 
--- Insert Projects (3 projects)
+-- Neha has Python and SQL
+INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES
+((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'Python'), 'intermediate'),
+((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM skills WHERE name = 'SQL'), 'advanced')
+ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = EXCLUDED.proficiency_level;
+
+-- Arjun has Flutter
+INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES
+((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Flutter'), 'beginner'),
+((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM skills WHERE name = 'Firebase'), 'beginner')
+ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = EXCLUDED.proficiency_level;
+
+-- Create a sample project by the manager
 INSERT INTO projects (name, description, status, created_by) VALUES
-('E-commerce Platform', 'Build a modern e-commerce platform with React and Node.js', 'active', 1),
-('Mobile Banking App', 'Develop a secure mobile banking application', 'active', 1),
-('Data Analytics Dashboard', 'Create a real-time analytics dashboard', 'pending', 2);
+('Mobile Banking App', 'A secure mobile banking application with transaction features', 'active', (SELECT id FROM users WHERE email = 'manager@company.com')),
+('E-commerce Platform', 'Full-stack e-commerce solution with payment integration', 'pending', (SELECT id FROM users WHERE email = 'manager@company.com')),
+('AI Dashboard', 'Analytics dashboard with machine learning insights', 'active', (SELECT id FROM users WHERE email = 'manager@company.com'))
+ON CONFLICT DO NOTHING;
 
--- Insert Project Skills (skills required for each project)
-INSERT INTO project_skills (project_id, skill_id, required_count) VALUES
--- E-commerce Platform (project 1) needs: JavaScript, React, Node.js, SQL, Git
-(1, 1, 1),
-(1, 3, 1),
-(1, 4, 1),
-(1, 5, 1),
-(1, 8, 1),
--- Mobile Banking App (project 2) needs: Java, AWS, Docker, SQL, Kubernetes
-(2, 14, 1),
-(2, 6, 1),
-(2, 7, 1),
-(2, 5, 1),
-(2, 11, 1),
--- Data Analytics Dashboard (project 3) needs: Python, SQL, PostgreSQL, React
-(3, 2, 1),
-(3, 5, 1),
-(3, 15, 1),
-(3, 3, 1);
+-- Add required skills to projects
+-- Mobile Banking App needs Flutter, Firebase, Kotlin
+INSERT INTO project_skills (project_id, skill_id) VALUES
+((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Flutter')),
+((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Firebase')),
+((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin'))
+ON CONFLICT DO NOTHING;
 
--- Insert Project Assignments
+-- E-commerce needs React, Node.js, SQL
+INSERT INTO project_skills (project_id, skill_id) VALUES
+((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'React')),
+((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'Node.js')),
+((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL'))
+ON CONFLICT DO NOTHING;
+
+-- AI Dashboard needs Python, SQL, React
+INSERT INTO project_skills (project_id, skill_id) VALUES
+((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python')),
+((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'SQL')),
+((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'))
+ON CONFLICT DO NOTHING;
+
+-- Assign employees to projects
+-- Amit to E-commerce (he has some skills but missing SQL advanced)
 INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES
--- Amit assigned to E-commerce Platform
-(1, 3, 1),
--- Sneha assigned to Data Analytics Dashboard
-(3, 4, 2),
--- Vikram assigned to E-commerce Platform
-(1, 5, 1),
--- Priya P assigned to E-commerce Platform
-(1, 6, 1);
+((SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com')),
+((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com'))
+ON CONFLICT DO NOTHING;
 
--- Insert Skill Tasks (for assigned employees, tasks for skills they need to learn)
-INSERT INTO skill_tasks (project_id, employee_id, skill_id, status, assigned_by) VALUES
--- Amit needs to learn Node.js and SQL for E-commerce project
-(1, 3, 4, 'pending', 1),
-(1, 3, 5, 'pending', 1),
--- Vikram needs to learn JavaScript, React, SQL for E-commerce project
-(1, 5, 1, 'pending', 1),
-(1, 5, 3, 'pending', 1),
-(1, 5, 5, 'pending', 1),
--- Priya P needs to learn Node.js and SQL for E-commerce project
-(1, 6, 4, 'pending', 1),
-(1, 6, 5, 'pending', 1),
--- Sneha needs to learn React for Analytics Dashboard
-(3, 4, 3, 'pending', 2);
+-- Neha to AI Dashboard (she has Python and SQL, missing React)
+INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES
+((SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com'))
+ON CONFLICT DO NOTHING;
 
--- Insert Notifications
-INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type) VALUES
--- Amit's notifications
-(3, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "Node.js" skill for project "E-commerce Platform". Please complete this task.', 1, 'skill_task'),
-(3, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "SQL" skill for project "E-commerce Platform". Please complete this task.', 1, 'skill_task'),
--- Vikram's notifications
-(5, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "JavaScript" skill for project "E-commerce Platform". Please complete this task.', 1, 'skill_task'),
-(5, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "React" skill for project "E-commerce Platform". Please complete this task.', 1, 'skill_task'),
--- Priya P's notifications
-(6, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "Node.js" skill for project "E-commerce Platform". Please complete this task.', 1, 'skill_task'),
--- Sneha's notifications
-(4, 'skill_task', 'New skill task assigned', 'You have been assigned to work on "React" skill for project "Data Analytics Dashboard". Please complete this task.', 3, 'skill_task');
+-- Arjun to Mobile Banking (he has Flutter and Firebase, missing Kotlin)
+INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES
+((SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM users WHERE email = 'manager@company.com'))
+ON CONFLICT DO NOTHING;
+
+-- Create skill gaps for missing skills
+-- Amit missing SQL for E-commerce
+INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES
+((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'E-commerce Platform'), (SELECT id FROM skills WHERE name = 'SQL'), 'pending'),
+((SELECT id FROM users WHERE email = 'amit@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'Python'), 'pending')
+ON CONFLICT DO NOTHING;
+
+-- Neha missing React for AI Dashboard
+INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES
+((SELECT id FROM users WHERE email = 'neha@company.com'), (SELECT id FROM projects WHERE name = 'AI Dashboard'), (SELECT id FROM skills WHERE name = 'React'), 'pending')
+ON CONFLICT DO NOTHING;
+
+-- Arjun missing Kotlin for Mobile Banking
+INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES
+((SELECT id FROM users WHERE email = 'arjun@company.com'), (SELECT id FROM projects WHERE name = 'Mobile Banking App'), (SELECT id FROM skills WHERE name = 'Kotlin'), 'pending')
+ON CONFLICT DO NOTHING;
+
+-- Assign training modules for skill gaps
+-- Amit gets SQL training assigned
+INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES
+((SELECT id FROM users WHERE email = 'amit@company.com'), 
+ (SELECT id FROM trainings WHERE name = 'SQL Basics' LIMIT 1), 
+ (SELECT id FROM projects WHERE name = 'E-commerce Platform'), 
+ 'assigned'),
+((SELECT id FROM users WHERE email = 'amit@company.com'), 
+ (SELECT id FROM trainings WHERE name = 'Python Fundamentals' LIMIT 1), 
+ (SELECT id FROM projects WHERE name = 'AI Dashboard'), 
+ 'assigned')
+ON CONFLICT DO NOTHING;
+
+-- Neha gets React training assigned
+INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES
+((SELECT id FROM users WHERE email = 'neha@company.com'), 
+ (SELECT id FROM trainings WHERE name = 'React Fundamentals' LIMIT 1), 
+ (SELECT id FROM projects WHERE name = 'AI Dashboard'), 
+ 'assigned')
+ON CONFLICT DO NOTHING;
+
+-- Arjun gets Kotlin training assigned
+INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES
+((SELECT id FROM users WHERE email = 'arjun@company.com'), 
+ (SELECT id FROM trainings WHERE name = 'Kotlin Fundamentals' LIMIT 1), 
+ (SELECT id FROM projects WHERE name = 'Mobile Banking App'), 
+ 'assigned')
+ON CONFLICT DO NOTHING;
+
+-- Add sample notifications
+INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type, read) VALUES
+((SELECT id FROM users WHERE email = 'amit@company.com'), 'project_assignment', 'New Project Assignment', 'You have been assigned to E-commerce Platform', 2, 'project', false),
+((SELECT id FROM users WHERE email = 'amit@company.com'), 'skill_gap', 'New Skill Required', 'You need to learn SQL for E-commerce Platform', 5, 'skill', false),
+((SELECT id FROM users WHERE email = 'neha@company.com'), 'project_assignment', 'New Project Assignment', 'You have been assigned to AI Dashboard', 3, 'project', false),
+((SELECT id FROM users WHERE email = 'arjun@company.com'), 'project_assignment', 'New Project Assignment', 'You have been assigned to Mobile Banking App', 1, 'project', false)
+ON CONFLICT DO NOTHING;

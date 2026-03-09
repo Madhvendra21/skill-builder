@@ -36,17 +36,38 @@ const auth = async (req, res, next) => {
   }
 };
 
+// Helper: Generate AI training recommendation
+const generateTrainingRecommendation = (skillName) => {
+  const recommendations = {
+    'JavaScript': ['JavaScript Basics', 'ES6+ Features', 'Async Programming'],
+    'Python': ['Python Fundamentals', 'OOP in Python', 'Python for Data Science'],
+    'React': ['React Hooks', 'State Management', 'React Router'],
+    'Node.js': ['Express.js', 'REST API Design', 'Authentication'],
+    'SQL': ['SQL Basics', 'Joins & Subqueries', 'Database Optimization'],
+    'Flutter': ['Flutter Widgets', 'State Management', 'Firebase Integration'],
+    'Firebase': ['Firebase Basics', 'Cloud Firestore', 'Authentication'],
+    'Kotlin': ['Kotlin Fundamentals', 'Android Development', 'Coroutines'],
+    'Docker': ['Docker Basics', 'Docker Compose', 'Kubernetes Intro'],
+    'AWS': ['AWS EC2', 'S3 Storage', 'Lambda Functions'],
+    'Git': ['Git Basics', 'Branching Strategies', 'CI/CD'],
+    'TypeScript': ['TypeScript Basics', 'Advanced Types', 'Decorators']
+  };
+  
+  const defaultRecs = [`${skillName} Fundamentals`, `${skillName} Advanced`, `${skillName} Mastery`];
+  return recommendations[skillName] || defaultRecs;
+};
+
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', timestamp: new Date().toISOString(), database: 'connected' });
   } catch (error) {
-    res.status(500).json({ status: 'error', database: 'disconnected' });
+    res.status(500).json({ status: 'error', database: 'disconnected', error: error.message });
   }
 });
 
-// Auth routes
+// ========== AUTH ROUTES ==========
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -74,12 +95,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
     
-    // For seeded users with placeholder passwords (they start with $2a$10$YourHashedPassword)
-    const isPlaceholderPassword = user.password_hash.startsWith('$2a$10$YourHashedPassword');
-    const isValidPassword = isPlaceholderPassword 
-      ? password === 'password123' 
-      : await bcrypt.compare(password, user.password_hash);
-    
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) return res.status(401).json({ error: 'Invalid email or password' });
     
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
@@ -93,31 +109,49 @@ app.get('/api/auth/me', auth, (req, res) => {
   res.json({ user: { id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role } });
 });
 
-// Skills routes
-app.get('/api/skills', auth, async (req, res) => {
+// ========== USERS ROUTES ==========
+app.get('/api/users/employees', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can view employees' });
   try {
-    const result = await pool.query('SELECT * FROM skills ORDER BY name');
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.email, u.created_at,
+        COALESCE(
+          json_agg(
+            json_build_object('skill_id', us.skill_id, 'skill_name', s.name, 'proficiency_level', us.proficiency_level)
+          ) FILTER (WHERE us.skill_id IS NOT NULL), '[]'
+        ) as skills
+      FROM users u
+      LEFT JOIN user_skills us ON u.id = us.user_id
+      LEFT JOIN skills s ON us.skill_id = s.id
+      WHERE u.role = 'employee'
+      GROUP BY u.id
+      ORDER BY u.name
+    `);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/skills', auth, async (req, res) => {
-  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can create skills' });
+app.get('/api/users/managers', auth, async (req, res) => {
   try {
-    const { name, description, category } = req.body;
-    const result = await pool.query(
-      'INSERT INTO skills (name, description, category) VALUES ($1, $2, $3) RETURNING *',
-      [name, description, category]
-    );
-    res.status(201).json(result.rows[0]);
+    const result = await pool.query('SELECT id, name, email FROM users WHERE role = $1 ORDER BY name', ['manager']);
+    res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// User skills
+app.get('/api/users/:id', auth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, email, role, created_at FROM users WHERE id = $1', [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/users/:id/skills', auth, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -145,7 +179,107 @@ app.post('/api/users/:id/skills', auth, async (req, res) => {
   }
 });
 
-// Projects routes
+app.delete('/api/users/:id/skills/:skillId', auth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM user_skills WHERE user_id = $1 AND skill_id = $2', [req.params.id, req.params.skillId]);
+    res.json({ message: 'Skill removed' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/users/skill/:skillId', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.email, us.proficiency_level
+      FROM users u
+      JOIN user_skills us ON u.id = us.user_id
+      WHERE us.skill_id = $1 AND u.role = 'employee'
+    `, [req.params.skillId]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== SKILLS ROUTES ==========
+app.get('/api/skills', auth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM skills ORDER BY name');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills/categories', auth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT DISTINCT category FROM skills WHERE category IS NOT NULL ORDER BY category');
+    res.json(result.rows.map(r => r.category));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills/:id', auth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM skills WHERE id = $1', [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Skill not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/skills', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can create skills' });
+  try {
+    const { name, description, category } = req.body;
+    const result = await pool.query(
+      'INSERT INTO skills (name, description, category) VALUES ($1, $2, $3) RETURNING *',
+      [name, description, category]
+    );
+    
+    // Auto-create training modules for this skill
+    const trainings = generateTrainingRecommendation(name);
+    for (const trainingName of trainings) {
+      await pool.query(
+        'INSERT INTO trainings (skill_id, name, description, duration_hours) VALUES ($1, $2, $3, $4)',
+        [result.rows[0].id, trainingName, `Learn ${trainingName} to master ${name}`, Math.floor(Math.random() * 20) + 5]
+      );
+    }
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/skills/:id', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can update skills' });
+  try {
+    const { name, description, category } = req.body;
+    const result = await pool.query(
+      'UPDATE skills SET name = $1, description = $2, category = $3 WHERE id = $4 RETURNING *',
+      [name, description, category, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/skills/:id', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can delete skills' });
+  try {
+    await pool.query('DELETE FROM skills WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Skill deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== PROJECTS ROUTES ==========
 app.get('/api/projects', auth, async (req, res) => {
   try {
     let query = `
@@ -161,7 +295,7 @@ app.get('/api/projects', auth, async (req, res) => {
     `;
     
     if (req.user.role === 'manager') {
-      query += ' WHERE p.manager_id = $1 GROUP BY p.id ORDER BY p.created_at DESC';
+      query += ' WHERE p.created_by = $1 GROUP BY p.id ORDER BY p.created_at DESC';
       const result = await pool.query(query, [req.user.id]);
       res.json(result.rows);
     } else {
@@ -174,13 +308,36 @@ app.get('/api/projects', auth, async (req, res) => {
   }
 });
 
+app.get('/api/projects/:id', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.*, 
+        COALESCE(
+          json_agg(
+            json_build_object('id', s.id, 'name', s.name, 'description', s.description)
+          ) FILTER (WHERE s.id IS NOT NULL), '[]'
+        ) as required_skills
+      FROM projects p
+      LEFT JOIN project_skills ps ON p.id = ps.project_id
+      LEFT JOIN skills s ON ps.skill_id = s.id
+      WHERE p.id = $1
+      GROUP BY p.id
+    `, [req.params.id]);
+    
+    if (!result.rows[0]) return res.status(404).json({ error: 'Project not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/projects', auth, async (req, res) => {
   if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can create projects' });
   try {
     const { name, description, required_skills, status } = req.body;
     const result = await pool.query(
-      'INSERT INTO projects (name, description, manager_id, status) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, description, req.user.id, status || 'pending']
+      'INSERT INTO projects (name, description, status, created_by) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, description, status || 'pending', req.user.id]
     );
     
     if (required_skills && required_skills.length > 0) {
@@ -195,7 +352,30 @@ app.post('/api/projects', auth, async (req, res) => {
   }
 });
 
-// Project assignments
+app.put('/api/projects/:id', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can update projects' });
+  try {
+    const { name, description, status } = req.body;
+    const result = await pool.query(
+      'UPDATE projects SET name = $1, description = $2, status = $3 WHERE id = $4 RETURNING *',
+      [name, description, status, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/projects/:id', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can delete projects' });
+  try {
+    await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Project deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/projects/:id/assign', auth, async (req, res) => {
   if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can assign employees' });
   try {
@@ -206,14 +386,14 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
       'SELECT * FROM project_assignments WHERE project_id = $1 AND employee_id = $2',
       [req.params.id, employee_id]
     );
-    if (existing.rows[0]) return res.status(400).json({ error: 'Employee already assigned to this project' });
+    if (existing.rows[0]) return res.status(400).json({ error: 'Employee already assigned' });
     
     await pool.query(
-      'INSERT INTO project_assignments (project_id, employee_id) VALUES ($1, $2)',
-      [req.params.id, employee_id]
+      'INSERT INTO project_assignments (project_id, employee_id, assigned_by) VALUES ($1, $2, $3)',
+      [req.params.id, employee_id, req.user.id]
     );
     
-    // Create notifications for required skills
+    // Create skill gaps and auto-assign trainings
     const projectSkills = await pool.query(`
       SELECT s.id, s.name FROM skills s
       JOIN project_skills ps ON s.id = ps.skill_id
@@ -221,12 +401,43 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
     `, [req.params.id]);
     
     const project = await pool.query('SELECT name FROM projects WHERE id = $1', [req.params.id]);
+    const employee = await pool.query('SELECT name FROM users WHERE id = $1', [employee_id]);
     
+    // Check for missing skills and create skill gaps
     for (const skill of projectSkills.rows) {
-      await pool.query(
-        'INSERT INTO notifications (user_id, project_id, skill_id, message) VALUES ($1, $2, $3, $4)',
-        [employee_id, req.params.id, skill.id, `You need to complete "${skill.name}" skill for project "${project.rows[0].name}"`]
+      const hasSkill = await pool.query(
+        'SELECT * FROM user_skills WHERE user_id = $1 AND skill_id = $2',
+        [employee_id, skill.id]
       );
+      
+      if (!hasSkill.rows[0]) {
+        // Create skill gap
+        await pool.query(
+          'INSERT INTO skill_gaps (employee_id, project_id, skill_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+          [employee_id, req.params.id, skill.id, 'pending']
+        );
+        
+        // Get trainings for this skill and assign first one
+        const trainings = await pool.query(
+          'SELECT id, name FROM trainings WHERE skill_id = $1 ORDER BY id LIMIT 1',
+          [skill.id]
+        );
+        
+        if (trainings.rows[0]) {
+          await pool.query(
+            'INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+            [employee_id, trainings.rows[0].id, req.params.id, 'assigned']
+          );
+        }
+        
+        // Create notification
+        await pool.query(
+          'INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type) VALUES ($1, $2, $3, $4, $5, $6)',
+          [employee_id, 'skill_gap', 'New Skill Required', 
+           `You need to learn "${skill.name}" for project "${project.rows[0].name}"`,
+           skill.id, 'skill']
+        );
+      }
     }
     
     res.json({ message: 'Employee assigned successfully' });
@@ -235,8 +446,42 @@ app.post('/api/projects/:id/assign', auth, async (req, res) => {
   }
 });
 
-// Tasks for employees
-app.get('/api/tasks', auth, async (req, res) => {
+app.delete('/api/projects/:id/assign/:employeeId', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can remove employees' });
+  try {
+    await pool.query('DELETE FROM project_assignments WHERE project_id = $1 AND employee_id = $2', 
+      [req.params.id, req.params.employeeId]);
+    res.json({ message: 'Employee removed from project' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/projects/:id/skills', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can add skills' });
+  try {
+    const { skill_id } = req.body;
+    await pool.query('INSERT INTO project_skills (project_id, skill_id) VALUES ($1, $2)', 
+      [req.params.id, skill_id]);
+    res.json({ message: 'Skill added to project' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/projects/:id/skills/:skillId', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can remove skills' });
+  try {
+    await pool.query('DELETE FROM project_skills WHERE project_id = $1 AND skill_id = $2', 
+      [req.params.id, req.params.skillId]);
+    res.json({ message: 'Skill removed from project' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== TASKS ROUTES ==========
+app.get('/api/tasks/my', auth, async (req, res) => {
   if (req.user.role !== 'employee') return res.status(403).json({ error: 'Only employees can view tasks' });
   try {
     const result = await pool.query(`
@@ -244,46 +489,127 @@ app.get('/api/tasks', auth, async (req, res) => {
       FROM skill_tasks st
       JOIN skills s ON st.skill_id = s.id
       JOIN projects p ON st.project_id = p.id
-      JOIN project_assignments pa ON pa.project_id = st.project_id
-      WHERE pa.employee_id = $1 AND st.is_completed = false
+      WHERE st.employee_id = $1 AND st.status != 'completed'
       ORDER BY st.created_at DESC
     `, [req.user.id]);
+    res.json({ tasks: result.rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/tasks/stats', auth, async (req, res) => {
+  try {
+    let result;
+    if (req.user.role === 'employee') {
+      result = await pool.query(`
+        SELECT 
+          COUNT(*) as total_tasks,
+          COUNT(*) FILTER (WHERE status = 'pending') as pending_tasks,
+          COUNT(*) FILTER (WHERE status = 'completed') as completed_tasks,
+          (SELECT COUNT(*) FROM project_assignments WHERE employee_id = $1) as project_count
+        FROM skill_tasks
+        WHERE employee_id = $1
+      `, [req.user.id]);
+    } else {
+      result = await pool.query(`
+        SELECT 
+          (SELECT COUNT(*) FROM projects WHERE created_by = $1) as project_count,
+          (SELECT COUNT(*) FROM project_assignments 
+           WHERE project_id IN (SELECT id FROM projects WHERE created_by = $1)) as total_assignments
+      `, [req.user.id]);
+    }
+    res.json({ stats: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/tasks/project/:projectId', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT st.*, u.name as employee_name, s.name as skill_name
+      FROM skill_tasks st
+      JOIN users u ON st.employee_id = u.id
+      JOIN skills s ON st.skill_id = s.id
+      WHERE st.project_id = $1
+    `, [req.params.projectId]);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/tasks/:id/complete', auth, async (req, res) => {
-  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Only employees can complete tasks' });
+app.get('/api/tasks/project/:projectId/progress', auth, async (req, res) => {
   try {
-    await pool.query('UPDATE skill_tasks SET is_completed = true, completed_at = NOW() WHERE id = $1', [req.params.id]);
-    
-    // Delete related notification
-    const task = await pool.query('SELECT skill_id, project_id FROM skill_tasks WHERE id = $1', [req.params.id]);
-    if (task.rows[0]) {
-      await pool.query(
-        'DELETE FROM notifications WHERE user_id = $1 AND skill_id = $2 AND project_id = $3',
-        [req.user.id, task.rows[0].skill_id, task.rows[0].project_id]
-      );
-    }
-    
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'completed') as completed,
+        COUNT(*) as total,
+        CASE 
+          WHEN COUNT(*) > 0 THEN ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'completed') / COUNT(*), 2)
+          ELSE 0
+        END as percentage
+      FROM skill_tasks
+      WHERE project_id = $1
+    `, [req.params.projectId]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/tasks/:id/complete', auth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE skill_tasks SET status = $1, completed_at = NOW() WHERE id = $2',
+      ['completed', req.params.id]
+    );
     res.json({ message: 'Task marked as completed' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Notifications
-app.get('/api/notifications', auth, async (req, res) => {
+// ========== SKILL GAPS ROUTES ==========
+app.get('/api/skill-gaps', auth, async (req, res) => {
+  try {
+    let result;
+    if (req.user.role === 'employee') {
+      result = await pool.query(`
+        SELECT sg.*, s.name as skill_name, p.name as project_name
+        FROM skill_gaps sg
+        JOIN skills s ON sg.skill_id = s.id
+        JOIN projects p ON sg.project_id = p.id
+        WHERE sg.employee_id = $1
+        ORDER BY sg.created_at DESC
+      `, [req.user.id]);
+    } else {
+      result = await pool.query(`
+        SELECT sg.*, s.name as skill_name, p.name as project_name, u.name as employee_name
+        FROM skill_gaps sg
+        JOIN skills s ON sg.skill_id = s.id
+        JOIN projects p ON sg.project_id = p.id
+        JOIN users u ON sg.employee_id = u.id
+        ORDER BY sg.created_at DESC
+      `);
+    }
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skill-gaps/my', auth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Only for employees' });
   try {
     const result = await pool.query(`
-      SELECT n.*, s.name as skill_name, p.name as project_name
-      FROM notifications n
-      LEFT JOIN skills s ON n.skill_id = s.id
-      LEFT JOIN projects p ON n.project_id = p.id
-      WHERE n.user_id = $1
-      ORDER BY n.created_at DESC
+      SELECT sg.*, s.name as skill_name, s.description as skill_description, p.name as project_name
+      FROM skill_gaps sg
+      JOIN skills s ON sg.skill_id = s.id
+      JOIN projects p ON sg.project_id = p.id
+      WHERE sg.employee_id = $1 AND sg.status = 'pending'
+      ORDER BY sg.created_at DESC
     `, [req.user.id]);
     res.json(result.rows);
   } catch (error) {
@@ -291,28 +617,353 @@ app.get('/api/notifications', auth, async (req, res) => {
   }
 });
 
-// Users list for managers
-app.get('/api/users', auth, async (req, res) => {
-  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can view users' });
+// ========== TRAININGS ROUTES ==========
+app.get('/api/trainings', auth, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, email, role, created_at FROM users WHERE role = $1 ORDER BY name', ['employee']);
+    const result = await pool.query(`
+      SELECT t.*, s.name as skill_name
+      FROM trainings t
+      JOIN skills s ON t.skill_id = s.id
+      ORDER BY t.name
+    `);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Get all employees with their skills
-app.get('/api/employees', auth, async (req, res) => {
-  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can view employees' });
+app.get('/api/trainings/skill/:skillId', auth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM trainings WHERE skill_id = $1 ORDER BY id', [req.params.skillId]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/trainings', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can create trainings' });
+  try {
+    const { skill_id, name, description, duration_hours, content_url } = req.body;
+    const result = await pool.query(
+      'INSERT INTO trainings (skill_id, name, description, duration_hours, content_url) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [skill_id, name, description, duration_hours, content_url]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== TRAINING PROGRESS ROUTES ==========
+app.get('/api/training-progress', auth, async (req, res) => {
+  try {
+    let result;
+    if (req.user.role === 'employee') {
+      result = await pool.query(`
+        SELECT tp.*, t.name as training_name, t.description, t.duration_hours, s.name as skill_name, p.name as project_name
+        FROM training_progress tp
+        JOIN trainings t ON tp.training_id = t.id
+        JOIN skills s ON t.skill_id = s.id
+        LEFT JOIN projects p ON tp.project_id = p.id
+        WHERE tp.employee_id = $1
+        ORDER BY tp.created_at DESC
+      `, [req.user.id]);
+    } else {
+      result = await pool.query(`
+        SELECT tp.*, t.name as training_name, s.name as skill_name, u.name as employee_name, p.name as project_name
+        FROM training_progress tp
+        JOIN trainings t ON tp.training_id = t.id
+        JOIN skills s ON t.skill_id = s.id
+        JOIN users u ON tp.employee_id = u.id
+        LEFT JOIN projects p ON tp.project_id = p.id
+        ORDER BY tp.created_at DESC
+      `);
+    }
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/training-progress/my', auth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Only for employees' });
   try {
     const result = await pool.query(`
-      SELECT u.id, u.name, u.email,
+      SELECT tp.*, t.name as training_name, t.description, t.duration_hours, s.name as skill_name, p.name as project_name
+      FROM training_progress tp
+      JOIN trainings t ON tp.training_id = t.id
+      JOIN skills s ON t.skill_id = s.id
+      LEFT JOIN projects p ON tp.project_id = p.id
+      WHERE tp.employee_id = $1
+      ORDER BY 
+        CASE tp.status 
+          WHEN 'in_progress' THEN 1 
+          WHEN 'assigned' THEN 2 
+          WHEN 'completed' THEN 3 
+        END,
+        tp.created_at DESC
+    `, [req.user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/training-progress', auth, async (req, res) => {
+  try {
+    const { training_id, project_id, status } = req.body;
+    const result = await pool.query(
+      'INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT (employee_id, training_id, project_id) DO UPDATE SET status = $4 RETURNING *',
+      [req.user.id, training_id, project_id, status]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/training-progress/:id/complete', auth, async (req, res) => {
+  try {
+    // Update training progress
+    await pool.query(
+      'UPDATE training_progress SET status = $1, completed_at = NOW(), progress_percentage = 100 WHERE id = $2',
+      ['completed', req.params.id]
+    );
+    
+    // Get training info
+    const tp = await pool.query(`
+      SELECT tp.*, t.skill_id, t.name as training_name, s.name as skill_name
+      FROM training_progress tp
+      JOIN trainings t ON tp.training_id = t.id
+      JOIN skills s ON t.skill_id = s.id
+      WHERE tp.id = $1
+    `, [req.params.id]);
+    
+    if (tp.rows[0]) {
+      // Add skill to employee
+      await pool.query(
+        'INSERT INTO user_skills (user_id, skill_id, proficiency_level) VALUES ($1, $2, $3) ON CONFLICT (user_id, skill_id) DO UPDATE SET proficiency_level = $3',
+        [req.user.id, tp.rows[0].skill_id, 'beginner']
+      );
+      
+      // Update skill gap status
+      await pool.query(
+        'UPDATE skill_gaps SET status = $1 WHERE employee_id = $2 AND skill_id = $3',
+        ['resolved', req.user.id, tp.rows[0].skill_id]
+      );
+      
+      // Check for next training in sequence
+      const nextTraining = await pool.query(`
+        SELECT t.id, t.name
+        FROM trainings t
+        WHERE t.skill_id = $1 AND t.id > $2
+        ORDER BY t.id
+        LIMIT 1
+      `, [tp.rows[0].skill_id, tp.rows[0].training_id]);
+      
+      if (nextTraining.rows[0]) {
+        // Auto-assign next training
+        await pool.query(
+          'INSERT INTO training_progress (employee_id, training_id, project_id, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+          [req.user.id, nextTraining.rows[0].id, tp.rows[0].project_id, 'assigned']
+        );
+        
+        // Create notification
+        await pool.query(
+          'INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type) VALUES ($1, $2, $3, $4, $5, $6)',
+          [req.user.id, 'training_assigned', 'New Training Assigned',
+           `Complete "${nextTraining.rows[0].name}" to continue mastering ${tp.rows[0].skill_name}`,
+           nextTraining.rows[0].id, 'training']
+        );
+      }
+    }
+    
+    res.json({ message: 'Training completed successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/training-progress/:id/start', auth, async (req, res) => {
+  try {
+    await pool.query(
+      'UPDATE training_progress SET status = $1, started_at = NOW() WHERE id = $2',
+      ['in_progress', req.params.id]
+    );
+    res.json({ message: 'Training started' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== NOTIFICATIONS ROUTES ==========
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const { unread_only } = req.query;
+    let query = `
+      SELECT n.*, s.name as skill_name, p.name as project_name
+      FROM notifications n
+      LEFT JOIN skills s ON n.reference_type = 'skill' AND n.reference_id = s.id
+      LEFT JOIN projects p ON n.reference_type = 'project' AND n.reference_id = p.id
+      WHERE n.user_id = $1
+    `;
+    
+    if (unread_only === 'true') {
+      query += ' AND n.read = false';
+    }
+    
+    query += ' ORDER BY n.created_at DESC';
+    
+    const result = await pool.query(query, [req.user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/notifications/unread-count', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND read = false',
+      [req.user.id]
+    );
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/notifications/:id/read', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2', 
+      [req.params.id, req.user.id]);
+    res.json({ message: 'Notification marked as read' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/notifications/read-all', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE notifications SET read = true WHERE user_id = $1', [req.user.id]);
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/notifications/:id', auth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', 
+      [req.params.id, req.user.id]);
+    res.json({ message: 'Notification deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== EMPLOYEE DASHBOARD DATA ==========
+app.get('/api/dashboard/employee', auth, async (req, res) => {
+  if (req.user.role !== 'employee') return res.status(403).json({ error: 'Only for employees' });
+  try {
+    // Get user skills
+    const skills = await pool.query(`
+      SELECT us.*, s.name as skill_name, s.description, s.category
+      FROM user_skills us
+      JOIN skills s ON us.skill_id = s.id
+      WHERE us.user_id = $1
+    `, [req.user.id]);
+    
+    // Get assigned projects
+    const projects = await pool.query(`
+      SELECT p.*, 
+        COALESCE(
+          json_agg(
+            json_build_object('id', s.id, 'name', s.name)
+          ) FILTER (WHERE s.id IS NOT NULL), '[]'
+        ) as required_skills
+      FROM projects p
+      JOIN project_assignments pa ON p.id = pa.project_id
+      LEFT JOIN project_skills ps ON p.id = ps.project_id
+      LEFT JOIN skills s ON ps.skill_id = s.id
+      WHERE pa.employee_id = $1
+      GROUP BY p.id
+    `, [req.user.id]);
+    
+    // Get skill gaps
+    const skillGaps = await pool.query(`
+      SELECT sg.*, s.name as skill_name, p.name as project_name
+      FROM skill_gaps sg
+      JOIN skills s ON sg.skill_id = s.id
+      JOIN projects p ON sg.project_id = p.id
+      WHERE sg.employee_id = $1 AND sg.status = 'pending'
+    `, [req.user.id]);
+    
+    // Get training progress
+    const trainings = await pool.query(`
+      SELECT tp.*, t.name as training_name, t.duration_hours, s.name as skill_name, p.name as project_name
+      FROM training_progress tp
+      JOIN trainings t ON tp.training_id = t.id
+      JOIN skills s ON t.skill_id = s.id
+      LEFT JOIN projects p ON tp.project_id = p.id
+      WHERE tp.employee_id = $1
+      ORDER BY 
+        CASE tp.status 
+          WHEN 'in_progress' THEN 1 
+          WHEN 'assigned' THEN 2 
+          WHEN 'completed' THEN 3 
+        END
+    `, [req.user.id]);
+    
+    // Get unread notifications count
+    const notifications = await pool.query(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND read = false',
+      [req.user.id]
+    );
+    
+    res.json({
+      skills: skills.rows,
+      projects: projects.rows,
+      skillGaps: skillGaps.rows,
+      trainings: trainings.rows,
+      unreadNotifications: parseInt(notifications.rows[0].count)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== MANAGER DASHBOARD DATA ==========
+app.get('/api/dashboard/manager', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only for managers' });
+  try {
+    // Get projects created by manager
+    const projects = await pool.query(`
+      SELECT p.*, 
+        COALESCE(
+          json_agg(
+            json_build_object('id', s.id, 'name', s.name)
+          ) FILTER (WHERE s.id IS NOT NULL), '[]'
+        ) as required_skills,
+        (SELECT COUNT(*) FROM project_assignments WHERE project_id = p.id) as employee_count
+      FROM projects p
+      LEFT JOIN project_skills ps ON p.id = ps.project_id
+      LEFT JOIN skills s ON ps.skill_id = s.id
+      WHERE p.created_by = $1
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `, [req.user.id]);
+    
+    // Get all employees with their skills
+    const employees = await pool.query(`
+      SELECT u.id, u.name, u.email, u.created_at,
         COALESCE(
           json_agg(
             json_build_object('skill_id', us.skill_id, 'skill_name', s.name, 'proficiency_level', us.proficiency_level)
           ) FILTER (WHERE us.skill_id IS NOT NULL), '[]'
-        ) as skills
+        ) as skills,
+        (SELECT COUNT(*) FROM project_assignments WHERE employee_id = u.id) as project_count
       FROM users u
       LEFT JOIN user_skills us ON u.id = us.user_id
       LEFT JOIN skills s ON us.skill_id = s.id
@@ -320,7 +971,37 @@ app.get('/api/employees', auth, async (req, res) => {
       GROUP BY u.id
       ORDER BY u.name
     `);
-    res.json(result.rows);
+    
+    // Get all skill gaps across employees
+    const skillGaps = await pool.query(`
+      SELECT sg.*, s.name as skill_name, p.name as project_name, u.name as employee_name
+      FROM skill_gaps sg
+      JOIN skills s ON sg.skill_id = s.id
+      JOIN projects p ON sg.project_id = p.id
+      JOIN users u ON sg.employee_id = u.id
+      WHERE p.created_by = $1 AND sg.status = 'pending'
+      ORDER BY sg.created_at DESC
+      LIMIT 20
+    `, [req.user.id]);
+    
+    // Get stats
+    const stats = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM projects WHERE created_by = $1) as total_projects,
+        (SELECT COUNT(*) FROM users WHERE role = 'employee') as total_employees,
+        (SELECT COUNT(*) FROM project_assignments 
+         WHERE project_id IN (SELECT id FROM projects WHERE created_by = $1)) as total_assignments,
+        (SELECT COUNT(*) FROM skill_gaps sg
+         JOIN projects p ON sg.project_id = p.id
+         WHERE p.created_by = $1 AND sg.status = 'pending') as pending_skill_gaps
+    `, [req.user.id]);
+    
+    res.json({
+      projects: projects.rows,
+      employees: employees.rows,
+      skillGaps: skillGaps.rows,
+      stats: stats.rows[0]
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

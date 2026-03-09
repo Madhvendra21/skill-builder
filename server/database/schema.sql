@@ -86,6 +86,44 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Skill Gaps table (tracks missing skills for employees in projects)
+CREATE TABLE IF NOT EXISTS skill_gaps (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,
+    UNIQUE(employee_id, project_id, skill_id)
+);
+
+-- Trainings table (training courses/modules for skills)
+CREATE TABLE IF NOT EXISTS trainings (
+    id SERIAL PRIMARY KEY,
+    skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    duration_hours INTEGER DEFAULT 10,
+    content_url TEXT,
+    difficulty_level VARCHAR(20) DEFAULT 'beginner' CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Training Progress table (tracks employee progress on trainings)
+CREATE TABLE IF NOT EXISTS training_progress (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    training_id INTEGER REFERENCES trainings(id) ON DELETE CASCADE,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'assigned' CHECK (status IN ('assigned', 'in_progress', 'completed')),
+    progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    UNIQUE(employee_id, training_id, project_id)
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
@@ -100,3 +138,9 @@ CREATE INDEX idx_skill_tasks_employee ON skill_tasks(employee_id);
 CREATE INDEX idx_skill_tasks_status ON skill_tasks(status);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_notifications_read ON notifications(read);
+CREATE INDEX idx_skill_gaps_employee ON skill_gaps(employee_id);
+CREATE INDEX idx_skill_gaps_project ON skill_gaps(project_id);
+CREATE INDEX idx_skill_gaps_status ON skill_gaps(status);
+CREATE INDEX idx_trainings_skill ON trainings(skill_id);
+CREATE INDEX idx_training_progress_employee ON training_progress(employee_id);
+CREATE INDEX idx_training_progress_status ON training_progress(status);

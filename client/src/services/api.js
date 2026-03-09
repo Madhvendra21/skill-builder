@@ -89,6 +89,34 @@ export const tasksAPI = {
   getProjectProgress: (projectId) => api.get(`/tasks/project/${projectId}/progress`)
 };
 
+// Skill Gaps API
+export const skillGapsAPI = {
+  getAll: () => api.get('/skill-gaps'),
+  getMy: () => api.get('/skill-gaps/my')
+};
+
+// Trainings API
+export const trainingsAPI = {
+  getAll: () => api.get('/trainings'),
+  getBySkill: (skillId) => api.get(`/trainings/skill/${skillId}`),
+  create: (data) => api.post('/trainings', data)
+};
+
+// Training Progress API
+export const trainingProgressAPI = {
+  getAll: () => api.get('/training-progress'),
+  getMy: () => api.get('/training-progress/my'),
+  create: (data) => api.post('/training-progress', data),
+  start: (id) => api.put(`/training-progress/${id}/start`),
+  complete: (id) => api.put(`/training-progress/${id}/complete`)
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getEmployeeDashboard: () => api.get('/dashboard/employee'),
+  getManagerDashboard: () => api.get('/dashboard/manager')
+};
+
 // Notifications API
 export const notificationsAPI = {
   getAll: (unreadOnly = false) => 
