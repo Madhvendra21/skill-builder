@@ -23,9 +23,9 @@ const EmployeeDashboard = () => {
         projectsAPI.getAll(),
         tasksAPI.getStats()
       ]);
-      setTasks(tasksRes.data.tasks || []);
-      setProjects(projectsRes.data.projects || []);
-      setStats(statsRes.data.stats || { total_tasks: 0, pending_tasks: 0, completed_tasks: 0, project_count: 0 });
+      setTasks(tasksRes.data || []);
+      setProjects(projectsRes.data || []);
+      setStats(statsRes.data || { total_tasks: 0, pending_tasks: 0, completed_tasks: 0, project_count: 0 });
       setError('');
     } catch (error) {
       console.error('Failed to fetch data:', error);

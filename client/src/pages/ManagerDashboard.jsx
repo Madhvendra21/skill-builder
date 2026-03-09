@@ -23,9 +23,9 @@ const ManagerDashboard = () => {
         usersAPI.getEmployees(),
         skillsAPI.getAll()
       ]);
-      setProjects(projectsRes.data.projects || []);
-      setEmployees(employeesRes.data.employees || []);
-      setSkills(skillsRes.data.skills || []);
+      setProjects(projectsRes.data || []);
+      setEmployees(employeesRes.data || []);
+      setSkills(skillsRes.data || []);
       setError('');
     } catch (error) {
       console.error('Failed to fetch data:', error);
