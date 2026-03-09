@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use relative path for API calls (works in both development and production)
+const API_URL = '/api';
 
 // Create axios instance
 const api = axios.create({
